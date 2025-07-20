@@ -139,7 +139,432 @@ This project lays a strong foundation, and potential future enhancements could i
 * **Integration with Other Data Sources:** Combining sales data with marketing, inventory, or customer demographics for a 360-degree view.
 * **Automated Data Refresh:** Setting up scheduled data refreshes from Azure SQL to Power BI Service.
 * **Power BI Goals/Scorecards:** Integrating key metrics into Power BI Goals for performance tracking against targets.
+---
 
+## MySQL SQL Queries for Data Exploration & Analysis
+
+This section contains a comprehensive set of SQL queries used throughout the project for data exploration, cleaning, and preliminary analysis within the `MenTshirt` table. These queries demonstrate proficiency in SQL for data manipulation, quality checks, and deriving insights directly from the database.
+
+**Note:** For practical deployment in your GitHub repository, it's recommended to place this SQL script in a separate file (e.g., `sql_scripts/men_tshirt_analysis_mysql.sql`) and simply link to it here. However, for a self-contained `README.md` that showcases everything at a glance, embedding it directly is also effective.
+
+```sql
+-- MYSQL server Script for Men's T-shirt Sales Analysis
+-- Database: MySQL Server
+-- Table: MenTshirt (Assuming 'dbo.' prefix is not used in MySQL, and table name is 'MenTshirt' or 'men_tshirt')
+-- Note: MySQL table names are case-sensitive on Linux, but not on Windows by default.
+-- It's good practice to use consistent casing, typically snake_case (e.g., men_tshirt)
+
+-- Schema of the 'MenTshirt' table based on provided image:
+-- Brand         VARCHAR(50) NOT NULL
+-- Title         VARCHAR(100) NOT NULL
+-- Original_Price TEXT
+-- Sale_Price    TEXT
+
+-- ====================================================================
+-- SECTION 1: Data Exploration and Basic Retrieval
+-- These queries help in understanding the structure and content of the MenTshirt table.
+-- ====================================================================
+
+-- 1.1. Select All Data (Initial View)
+-- Purpose: To get a quick overview of all columns and a sample of rows in the table.
+--          Essential for initial data inspection.
+-- Skill Showcased: Basic SELECT statement, understanding table contents.
+SELECT
+    Brand,
+    Title,
+    Original_Price,
+    Sale_Price
+FROM
+    MenTshirt -- Adjusted for MySQL table naming convention
+ORDER BY
+    Brand, Title
+LIMIT 100; -- MySQL equivalent of TOP/FETCH NEXT
+
+-- 1.2. Count Total Records
+-- Purpose: To determine the total number of entries in the dataset.
+--          Useful for understanding data volume.
+-- Skill Showcased: COUNT() aggregate function, understanding dataset size.
+SELECT
+    COUNT(*) AS TotalRecords
+FROM
+    MenTshirt;
+
+-- 1.3. List Unique Brands
+-- Purpose: To identify all distinct brands present in the dataset.
+--          Important for categorical analysis and understanding data diversity.
+-- Skill Showcased: DISTINCT keyword, categorical data identification.
+SELECT DISTINCT
+    Brand
+FROM
+    MenTshirt
+ORDER BY
+    Brand;
+
+-- 1.4. Count Products per Brand
+-- Purpose: To see how many t-shirts are listed under each brand.
+--          Helps in understanding brand distribution.
+-- Skill Showcased: GROUP BY, COUNT(), ORDER BY with aggregate functions.
+SELECT
+    Brand,
+    COUNT(Title) AS NumberOfProducts
+FROM
+    MenTshirt
+GROUP BY
+    Brand
+ORDER BY
+    NumberOfProducts DESC;
+
+-- ====================================================================
+-- SECTION 2: Data Type Conversion & Cleaning
+-- Given Original_Price and Sale_Price are stored as TEXT, these queries
+-- demonstrate handling potential data quality issues and safe conversion.
+-- ====================================================================
+
+-- 2.1. Inspect Non-Numeric Price Values
+-- Purpose: To identify rows where Original_Price or Sale_Price cannot be cleanly
+--          converted to a numeric type. Crucial for data cleaning before calculations.
+-- Skill Showcased: REGEXP (for pattern matching in MySQL), WHERE clause for data validation,
+--                  understanding data type inconsistencies.
+-- Note: MySQL does not have TRY_CAST. We use regular expressions to find non-numeric strings.
+-- This regex matches strings that are NOT entirely digits, a single decimal point, and digits.
+SELECT
+    Brand,
+    Title,
+    Original_Price
+FROM
+    MenTshirt
+WHERE
+    Original_Price IS NOT NULL
+    AND TRIM(Original_Price) <> ''
+    AND (Original_Price REGEXP '[^0-9.]' OR Original_Price LIKE '%.%.' OR Original_Price LIKE '-%'); -- Detects non-numeric characters, multiple dots, or negative signs
+
+SELECT
+    Brand,
+    Title,
+    Sale_Price
+FROM
+    MenTshirt
+WHERE
+    Sale_Price IS NOT NULL
+    AND TRIM(Sale_Price) <> ''
+    AND (Sale_Price REGEXP '[^0-9.]' OR Sale_Price LIKE '%.%.' OR Sale_Price LIKE '-%');
+
+-- 2.2. Clean and Convert Price Columns (Safe Conversion for Calculation)
+-- Purpose: To convert Original_Price and Sale_Price from TEXT to DECIMAL for
+--          accurate mathematical operations. This handles non-numeric values
+--          gracefully by converting them to NULL for calculations.
+-- Skill Showcased: CAST(), NULLIF, preparing data for analysis, handling conversion errors.
+SELECT
+    Brand,
+    Title,
+    CAST(NULLIF(TRIM(Original_Price), '') AS DECIMAL(10, 2)) AS Converted_Original_Price,
+    CAST(NULLIF(TRIM(Sale_Price), '') AS DECIMAL(10, 2)) AS Converted_Sale_Price
+FROM
+    MenTshirt
+WHERE
+    (TRIM(Original_Price) REGEXP '^[0-9]+(\\.[0-9]+)?$' OR Original_Price IS NULL OR TRIM(Original_Price) = '') -- Only numeric or empty/null
+    AND (TRIM(Sale_Price) REGEXP '^[0-9]+(\\.[0-9]+)?$' OR Sale_Price IS NULL OR TRIM(Sale_Price) = '');
+
+-- 2.3. Update Price Columns (Recommended: Create new columns first, then update)
+-- Purpose: To demonstrate how to permanently clean and convert data types in the table.
+--          This is crucial for robust data warehousing.
+-- Skill Showcased: ALTER TABLE, UPDATE, SET, data type modification, conditional logic.
+-- DANGER: ONLY RUN THESE ALTER/UPDATE STATEMENTS ON A TEST/DEVELOPMENT DATABASE.
+-- For production, it's safer to create a new, properly typed table and insert cleaned data.
+
+-- Step 1: Add new temporary columns with the correct DECIMAL type
+-- ALTER TABLE MenTshirt
+-- ADD COLUMN Temp_Original_Price DECIMAL(10, 2) NULL,
+-- ADD COLUMN Temp_Sale_Price DECIMAL(10, 2) NULL;
+
+-- Step 2: Update the new columns with safely cast values
+-- UPDATE MenTshirt
+-- SET
+--     Temp_Original_Price = CASE
+--         WHEN TRIM(Original_Price) REGEXP '^[0-9]+(\\.[0-9]+)?$'
+--         THEN CAST(TRIM(Original_Price) AS DECIMAL(10, 2))
+--         ELSE NULL
+--     END,
+--     Temp_Sale_Price = CASE
+--         WHEN TRIM(Sale_Price) REGEXP '^[0-9]+(\\.[0-9]+)?$'
+--         THEN CAST(TRIM(Sale_Price) AS DECIMAL(10, 2))
+--         ELSE NULL
+--     END;
+
+-- Step 3: (Optional but good practice) Drop the old TEXT columns
+-- ALTER TABLE MenTshirt
+-- DROP COLUMN Original_Price,
+-- DROP COLUMN Sale_Price;
+
+-- Step 4: (Optional but good practice) Rename the new columns to the original names
+-- ALTER TABLE MenTshirt
+-- CHANGE COLUMN Temp_Original_Price Original_Price DECIMAL(10, 2) NULL,
+-- CHANGE COLUMN Temp_Sale_Price Sale_Price DECIMAL(10, 2) NULL;
+
+-- ====================================================================
+-- SECTION 3: Basic Analytical Queries (Post-Cleaning Assumption)
+-- For the following queries, we assume Original_Price and Sale_Price can
+-- be reliably converted to numeric types. In a real scenario, you'd apply
+-- the CAST/NULLIF or use a pre-cleaned table as per Section 2.2/2.3.
+-- ====================================================================
+
+-- Define a reusable expression for safe price conversion to avoid repetition
+-- This is a common technique in SQL for readability and maintainability.
+-- For actual execution, replace (CAST(NULLIF(TRIM(Original_Price), '') AS DECIMAL(10, 2)))
+-- and (CAST(NULLIF(TRIM(Sale_Price), '') AS DECIMAL(10, 2))) with your chosen method or
+-- use the cleaned columns if you updated the table permanently.
+
+-- Example: Use the temp columns if you ran the ALTER/UPDATE in Section 2.3
+-- Or, continue using the CAST/NULLIF method if you prefer non-destructive querying.
+-- For this script, we'll continue with the CAST/NULLIF for demonstration purposes,
+-- assuming the original TEXT columns are still present.
+
+-- 3.1. Calculate Discount Amount and Percentage
+-- Purpose: To derive key business metrics like the actual discount amount and the
+--          discount percentage for each product. Essential for pricing analysis.
+-- Skill Showcased: Basic arithmetic operations, CASE statement for division by zero prevention,
+--                  understanding sales metrics.
+SELECT
+    Brand,
+    Title,
+    CAST(NULLIF(TRIM(Original_Price), '') AS DECIMAL(10, 2)) AS OriginalPrice,
+    CAST(NULLIF(TRIM(Sale_Price), '') AS DECIMAL(10, 2)) AS SalePrice,
+    (CAST(NULLIF(TRIM(Original_Price), '') AS DECIMAL(10, 2)) - CAST(NULLIF(TRIM(Sale_Price), '') AS DECIMAL(10, 2))) AS DiscountAmount,
+    CASE
+        WHEN CAST(NULLIF(TRIM(Original_Price), '') AS DECIMAL(10, 2)) > 0
+        THEN ((CAST(NULLIF(TRIM(Original_Price), '') AS DECIMAL(10, 2)) - CAST(NULLIF(TRIM(Sale_Price), '') AS DECIMAL(10, 2))) / CAST(NULLIF(TRIM(Original_Price), '') AS DECIMAL(10, 2))) * 100
+        ELSE 0 -- Or NULL, depending on desired behavior for 0 Original_Price
+    END AS DiscountPercentage
+FROM
+    MenTshirt
+WHERE
+    CAST(NULLIF(TRIM(Original_Price), '') AS DECIMAL(10, 2)) IS NOT NULL
+    AND CAST(NULLIF(TRIM(Sale_Price), '') AS DECIMAL(10, 2)) IS NOT NULL;
+
+
+-- 3.2. Average Sale Price per Brand
+-- Purpose: To determine the average selling price for products from each brand.
+--          Helps in understanding brand positioning (premium, budget).
+-- Skill Showcased: AVG() aggregate function, GROUP BY for brand-level aggregation.
+SELECT
+    Brand,
+    AVG(CAST(NULLIF(TRIM(Sale_Price), '') AS DECIMAL(10, 2))) AS AverageSalePrice
+FROM
+    MenTshirt
+WHERE
+    CAST(NULLIF(TRIM(Sale_Price), '') AS DECIMAL(10, 2)) IS NOT NULL
+GROUP BY
+    Brand
+ORDER BY
+    AverageSalePrice DESC;
+
+-- 3.3. Top 5 Brands by Average Discount Percentage
+-- Purpose: To identify which brands are offering the highest average discounts.
+--          This directly addresses one of your Power BI visuals.
+-- Skill Showcased: Subqueries or CTEs, AVG(), GROUP BY, ORDER BY, LIMIT for ranking.
+WITH BrandDiscounts AS (
+    SELECT
+        Brand,
+        AVG(CASE
+                WHEN CAST(NULLIF(TRIM(Original_Price), '') AS DECIMAL(10, 2)) > 0
+                THEN ((CAST(NULLIF(TRIM(Original_Price), '') AS DECIMAL(10, 2)) - CAST(NULLIF(TRIM(Sale_Price), '') AS DECIMAL(10, 2))) / CAST(NULLIF(TRIM(Original_Price), '') AS DECIMAL(10, 2))) * 100
+                ELSE 0
+            END) AS AverageDiscountPercentage
+    FROM
+        MenTshirt
+    WHERE
+        CAST(NULLIF(TRIM(Original_Price), '') AS DECIMAL(10, 2)) IS NOT NULL
+        AND CAST(NULLIF(TRIM(Sale_Price), '') AS DECIMAL(10, 2)) IS NOT NULL
+    GROUP BY
+        Brand
+)
+SELECT
+    Brand,
+    AverageDiscountPercentage
+FROM
+    BrandDiscounts
+WHERE
+    AverageDiscountPercentage IS NOT NULL -- Exclude brands where no valid discount could be calculated
+ORDER BY
+    AverageDiscountPercentage DESC
+LIMIT 5;
+
+-- 3.4. Brands with Products Below a Certain Price Threshold
+-- Purpose: To identify brands that offer products at a lower price point,
+--          potentially targeting a specific market segment.
+-- Skill Showcased: HAVING clause with aggregate functions, conditional filtering.
+SELECT
+    Brand,
+    MIN(CAST(NULLIF(TRIM(Sale_Price), '') AS DECIMAL(10, 2))) AS MinSalePrice,
+    MAX(CAST(NULLIF(TRIM(Sale_Price), '') AS DECIMAL(10, 2))) AS MaxSalePrice,
+    AVG(CAST(NULLIF(TRIM(Sale_Price), '') AS DECIMAL(10, 2))) AS AvgSalePrice
+FROM
+    MenTshirt
+WHERE
+    CAST(NULLIF(TRIM(Sale_Price), '') AS DECIMAL(10, 2)) IS NOT NULL
+GROUP BY
+    Brand
+HAVING
+    AVG(CAST(NULLIF(TRIM(Sale_Price), '') AS DECIMAL(10, 2))) < 500 -- Example threshold
+ORDER BY
+    AvgSalePrice ASC;
+
+-- 3.5. Identify Brands with Price Inconsistencies (Original <= Sale Price)
+-- Purpose: To flag potential data errors or unusual pricing strategies where
+--          the sale price is equal to or higher than the original price.
+-- Skill Showcased: Data validation, COUNT(), GROUP BY, WHERE for complex conditions.
+SELECT
+    Brand,
+    COUNT(*) AS NumberOfInconsistentPrices
+FROM
+    MenTshirt
+WHERE
+    CAST(NULLIF(TRIM(Original_Price), '') AS DECIMAL(10, 2)) IS NOT NULL
+    AND CAST(NULLIF(TRIM(Sale_Price), '') AS DECIMAL(10, 2)) IS NOT NULL
+    AND CAST(NULLIF(TRIM(Original_Price), '') AS DECIMAL(10, 2)) <= CAST(NULLIF(TRIM(Sale_Price), '') AS DECIMAL(10, 2))
+GROUP BY
+    Brand
+ORDER BY
+    NumberOfInconsistentPrices DESC;
+
+-- ====================================================================
+-- SECTION 4: Advanced Analytical Queries
+-- These queries delve deeper into the data, demonstrating more complex SQL capabilities.
+-- ====================================================================
+
+-- 4.1. Rank Brands by Average Discount (Using DENSE_RANK())
+-- Purpose: To provide a clear ranking of brands based on their average discount percentage,
+--          handling ties.
+-- Skill Showcased: Window Functions (DENSE_RANK()), CTEs for multi-step logic.
+WITH BrandDiscount AS (
+    SELECT
+        Brand,
+        AVG(CASE
+                WHEN CAST(NULLIF(TRIM(Original_Price), '') AS DECIMAL(10, 2)) > 0
+                THEN ((CAST(NULLIF(TRIM(Original_Price), '') AS DECIMAL(10, 2)) - CAST(NULLIF(TRIM(Sale_Price), '') AS DECIMAL(10, 2))) / CAST(NULLIF(TRIM(Original_Price), '') AS DECIMAL(10, 2))) * 100
+                ELSE 0
+            END) AS AvgDiscountPercentage
+    FROM
+        MenTshirt
+    WHERE
+        CAST(NULLIF(TRIM(Original_Price), '') AS DECIMAL(10, 2)) IS NOT NULL
+        AND CAST(NULLIF(TRIM(Sale_Price), '') AS DECIMAL(10, 2)) IS NOT NULL
+    GROUP BY
+        Brand
+)
+SELECT
+    Brand,
+    AvgDiscountPercentage,
+    DENSE_RANK() OVER (ORDER BY AvgDiscountPercentage DESC) AS DiscountRank
+FROM
+    BrandDiscount
+WHERE
+    AvgDiscountPercentage IS NOT NULL
+ORDER BY
+    DiscountRank, Brand;
+
+-- 4.2. Percentage of Products Discounted per Brand
+-- Purpose: To understand what proportion of a brand's products are currently on sale.
+-- Skill Showcased: Conditional aggregation (SUM(CASE WHEN ... END)), COUNT(), GROUP BY.
+SELECT
+    Brand,
+    COUNT(*) AS TotalProducts,
+    SUM(CASE WHEN CAST(NULLIF(TRIM(Original_Price), '') AS DECIMAL(10, 2)) > CAST(NULLIF(TRIM(Sale_Price), '') AS DECIMAL(10, 2)) THEN 1 ELSE 0 END) AS ProductsOnSale,
+    (CAST(SUM(CASE WHEN CAST(NULLIF(TRIM(Original_Price), '') AS DECIMAL(10, 2)) > CAST(NULLIF(TRIM(Sale_Price), '') AS DECIMAL(10, 2)) THEN 1 ELSE 0 END) AS DECIMAL(10,2)) * 100.0) / COUNT(*) AS PercentageOfProductsOnSale
+FROM
+    MenTshirt
+WHERE
+    CAST(NULLIF(TRIM(Original_Price), '') AS DECIMAL(10, 2)) IS NOT NULL
+    AND CAST(NULLIF(TRIM(Sale_Price), '') AS DECIMAL(10, 2)) IS NOT NULL
+GROUP BY
+    Brand
+ORDER BY
+    PercentageOfProductsOnSale DESC;
+
+-- 4.3. Top 3 Most Expensive T-shirts by Original Price
+-- Purpose: To find the highest-priced items, indicating premium offerings.
+-- Skill Showcased: LIMIT with ORDER BY, understanding maximum values.
+SELECT
+    Brand,
+    Title,
+    CAST(NULLIF(TRIM(Original_Price), '') AS DECIMAL(10, 2)) AS OriginalPrice
+FROM
+    MenTshirt
+WHERE
+    CAST(NULLIF(TRIM(Original_Price), '') AS DECIMAL(10, 2)) IS NOT NULL
+ORDER BY
+    OriginalPrice DESC
+LIMIT 3;
+
+-- ====================================================================
+-- SECTION 5: Potential Schema Enhancements (Conceptual)
+-- This section demonstrates understanding of database design principles
+-- and how to improve the existing schema for better analysis and integrity.
+-- ====================================================================
+
+-- Purpose: To show forethought in data modeling for future scalability and analytical depth.
+-- Skill Showcased: Data modeling, database design principles, understanding of
+--                  data warehousing concepts (e.g., star/snowflake schema).
+
+-- Proposed Schema Improvements:
+-- To enhance analytical capabilities and ensure data integrity, the current 'MenTshirt'
+-- table could be refined into a more robust schema.
+
+-- 1.  Dedicated Price Columns with Correct Data Types:
+--     Original_Price and Sale_Price should be DECIMAL(10, 2) from the outset,
+--     preventing text-to-numeric conversion issues and improving performance.
+
+-- 2.  Product Dimension Table (DimProduct):
+--     CREATE TABLE DimProduct (
+--         ProductID INT PRIMARY KEY AUTO_INCREMENT,
+--         Title VARCHAR(100) NOT NULL,
+--         BrandID INT, -- Foreign Key to DimBrand
+--         -- Add other product attributes like Category, Color, Size if available
+--         FOREIGN KEY (BrandID) REFERENCES DimBrand(BrandID)
+--     );
+
+-- 3.  Brand Dimension Table (DimBrand):
+--     CREATE TABLE DimBrand (
+--         BrandID INT PRIMARY KEY AUTO_INCREMENT,
+--         BrandName VARCHAR(50) NOT NULL UNIQUE
+--     );
+
+-- 4.  Fact Table (FactSalesPrice):
+--     CREATE TABLE FactSalesPrice (
+--         SalePriceID INT PRIMARY KEY AUTO_INCREMENT,
+--         ProductID INT NOT NULL,
+--         OriginalPrice DECIMAL(10, 2),
+--         SalePrice DECIMAL(10, 2),
+--         DateCaptured DATE, -- Crucial for tracking price changes over time
+--         FOREIGN KEY (ProductID) REFERENCES DimProduct(ProductID)
+--     );
+
+-- Example Query on an Enhanced Schema (Conceptual - requires the above tables to exist):
+-- This query demonstrates how analysis would be cleaner and more robust
+-- with a normalized schema.
+/*
+SELECT
+    b.BrandName,
+    p.Title,
+    fs.OriginalPrice,
+    fs.SalePrice,
+    (fs.OriginalPrice - fs.SalePrice) AS DiscountAmount,
+    CASE
+        WHEN fs.OriginalPrice > 0 THEN ((fs.OriginalPrice - fs.SalePrice) / fs.OriginalPrice) * 100
+        ELSE 0
+    END AS DiscountPercentage
+FROM
+    FactSalesPrice fs
+JOIN
+    DimProduct p ON fs.ProductID = p.ProductID
+JOIN
+    DimBrand b ON p.BrandID = b.BrandID
+WHERE
+    fs.DateCaptured = (SELECT MAX(DateCaptured) FROM FactSalesPrice) -- Latest prices
+ORDER BY
+    b.BrandName, p.Title;
+*/
+---
 ---
 
 ## Setup and Replication (For Recruiters/Fellow Developers)
